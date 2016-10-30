@@ -1,0 +1,243 @@
+---
+title: "Analysis of Weather Event Types on US Population Health and Economics"
+author: "Charlie Astrada"
+date: "10/29/2016"
+output: html_document
+---
+
+## Synopsis
+
+The purpose of this report is to explore the US National Oceanic and Atmospheric Administration's (NOAA) storm database and answer the following questions: 
+
+* Across the United States, which types of events (as indicated in the `EVTYPE` variable) are most harmful with respect to population health?
+* Across the United States, which types of events have the greatest economic consequences?
+
+The report concludes that: 
+
+* Tornadoes are the most harmful weather event type to population health in the US  
+* Floods are the most economically damaging weather event type in the US
+
+
+## Data Processing
+
+The libraries below are the ones we will need for our analysis work. 
+
+```{r load libraries, message=FALSE}
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+
+Data is loaded into a data frame and only the variables that we require are selected in order to speed up working with the data frame. 
+```{r load data, cache=TRUE}
+# load data into dataframe
+storm.data <- read.csv("repdata%2Fdata%2FStormData.csv.bz2", na.strings = c("", " ", "NA"), stringsAsFactors = F)
+
+# select only those variables required for the analysis
+storm.data <- storm.data %>% 
+        select(EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+```
+
+The `EVTYPE` variable contains the relevant weather event types. There are many misspellings and similarly named values. We will want to perform some cleanup and grouping to tidy things. 
+
+```{r explore data}
+head(unique(storm.data$EVTYPE), n = 100)
+```
+
+The code below groups and cleans up the `EVTYPE` data.
+```{r group data, cache=TRUE}
+# make all values lower case and trim white space to simplify regexps
+storm.data$EVTYPE <- str_to_lower(storm.data$EVTYPE)
+storm.data$EVTYPE <- str_trim(storm.data$EVTYPE, side = "both")
+
+# Group EVTYPEs based on best guesstimate relevance
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(wnd|wns|wind).*", replacement = "wind")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(snow|icy|ice|winter weather|wintery|freeze|sleet|frost).*", replacement = "snow_ice_frost")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(blizzard).*", replacement = "blizzard")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(winter storm|freezing drizzle|winter mix|wintry).*", replacement = "winter_storm")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(hail).*", replacement = "hail")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(tornado|torndao).*", replacement = "tornado")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(hurricane|floyd).*", replacement = "hurricane")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(fldg|fld|flood|floood).*", replacement = "flooding")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(wall|funnel).*", replacement = "wall_cloud/funnel_cloud")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(record high|record warm|very warm|high temp).*", replacement = "high_temperature")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(hot|warm|heat|unusual warmth).*", replacement = "high_temperature")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(record low|low temp|cold|cool).*", replacement = "low_temperature")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(dry|driest|drought).*", replacement = "dry_weather")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(microburst).*", replacement = "dry_microburst")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(thunderstorm|tstm|storm|gustnado).*", replacement = "thunderstorm")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(rain|precipitation|precipatation|precip|heavy mix|shower|wet).*", replacement = "wet_weather")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(erosion|erosin).*", replacement = "erosion")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(fog|vog).*", replacement = "fog")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(smoke).*", replacement = "smoke")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(fire).*", replacement = "fire")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(landslide|landslump).*", replacement = "landslides")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(tide).*", replacement = "tide")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(surf).*", replacement = "surf")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(wave).*", replacement = "wave")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(dam).*", replacement = "dam_failure")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(water spout|waterspout|wayterspout).*", replacement = "waterspout")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(lightning|ligntning|lighting).*", replacement = "lightning")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(dust).*", replacement = "dust")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(swells|sea).*", replacement = "rough_sea")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(temperature record).*", replacement = "record_temperature")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(volcanic).*", replacement = "volcanic_activity")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(marine mishap).*", replacement = "marine_accident")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(mud).*", replacement = "mudslide")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(urban|stream).*", replacement = "stream")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(avalance|avalanche).*", replacement = "avalanche")
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(seiche).*", replacement = "stream")
+# group nonsensical EVTYPEs into other
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = ".*(summary|southeast|monthly temperature|red flag criteria|apache|excessive).*", replacement = "other") 
+# Group unknowns into other
+storm.data$EVTYPE <- str_replace(storm.data$EVTYPE, 
+                                 pattern = "\\?", replacement = "other") 
+```
+
+The `PROPDMGEXP` and `CROPDMGEXP` are coded exponents corresponding to hundreds (H), thousands (T), millions (M), and billions (B). These exponents must be multiplied by the `PROPDMG` and `CROPDMG` values respectively to come up with single totals. Note that `PROPDMGEXP` and `CROPDMGEXP` contain superfluous codes, which we ignore. 
+
+```{r calculate  totals}
+# make all codes upper case for simplicity
+storm.data$PROPDMGEXP <- str_to_upper(storm.data$PROPDMGEXP)
+storm.data$CROPDMGEXP <- str_to_upper(storm.data$CROPDMGEXP)
+
+# Create a new variable containing the property damage multipled by the exponent for simplicity
+storm.data <- storm.data %>%
+        mutate(PROP_DMG_TOTAL = if_else(PROPDMGEXP == "H",
+                                        PROPDMG * 1e+2,
+                                        if_else(PROPDMGEXP == "K", 
+                                                PROPDMG * 1e+3, 
+                                                if_else(PROPDMGEXP == "M",
+                                                        PROPDMG * 1e+6,
+                                                        if_else(PROPDMGEXP == "B",
+                                                                 PROPDMG * 1e+9,
+                                                                 PROPDMG)))))
+
+# Create a new variable containing the crop damage multipled by the exponent for simplicity
+storm.data <- storm.data %>%
+        mutate(CROP_DMG_TOTAL = if_else(CROPDMGEXP == "H",
+                                        CROPDMG * 1e+2,
+                                        if_else(CROPDMGEXP == "K", 
+                                                CROPDMG * 1e+3, 
+                                                if_else(CROPDMGEXP == "M",
+                                                        CROPDMG * 1e+6,
+                                                        if_else(CROPDMGEXP == "B",
+                                                                CROPDMG * 1e+9,
+                                                                CROPDMG)))))
+
+
+```
+
+In the plot below we take a top 5 ranking by total injuries/fatalities using an overlaid bar chart. We can see that tornadoes are by far the biggest hazard to population health. 
+```{r plot fatalities injuries}
+
+# Summarise dataframe with injuries, fatalities, and total of two
+inj_fatalities <- storm.data %>%
+        group_by(EVTYPE) %>% 
+        summarise(total_injuries_fatalities = sum(FATALITIES,INJURIES, na.rm = T),
+                  injuries = sum(INJURIES, na.rm = T),
+                  fatalities = sum(FATALITIES, na.rm = T))
+
+# create a top 5 rank by total injuries/fatalities
+top_5_by_inj_fatalities <- inj_fatalities %>% 
+        top_n(n = 5, wt = total_injuries_fatalities) 
+
+
+# we need to adjust data frame to plot both fatalities and injuries
+top_5_by_inj_fatalities <- gather(top_5_by_inj_fatalities, key = event_type,
+                                   value = total,
+                                   fatalities, injuries)
+
+p.health <- ggplot(top_5_by_inj_fatalities, aes(EVTYPE, total, fill = event_type))
+p.health + geom_bar(stat = "identity") + 
+        labs(title = "Top 5 Events by Fatalities and Injuries", x = "Weather Event", y = "Total Persons") +
+        scale_fill_discrete(name = "Weather Event")
+
+
+```
+
+
+In the plot below, we take a top 5 ranking by property and crop damage. We see that flooding is by far the largest economic hazard. 
+
+```{r plot property and crop damage}
+
+# Summarise dataframe with property and crop damage total
+economic_damage <- storm.data %>%
+        group_by(EVTYPE) %>% 
+        summarise(total_economic_damage = sum(PROP_DMG_TOTAL, CROP_DMG_TOTAL, na.rm = T))
+
+# create a top 5 rank by total economic damage
+top_5_by_economic_damage <- economic_damage %>% 
+        top_n(n = 5, wt = total_economic_damage) 
+
+
+p.health <- ggplot(top_5_by_economic_damage, aes(EVTYPE, total_economic_damage, fill = EVTYPE))
+p.health + geom_bar(stat = "identity", show.legend = F) + 
+        labs(title = "Top 5 Events by Economic Damage", x = "Weather Event", y = "Total US Dollars")
+
+```
+
+## Results
+
+All totals are rounded where appropriate. 
+
+### Population Health
+Tornadoes are the most harmful weather event type to US population health with a total of 97043 injuries or fatalities. 
+
+The remaining 4, ordered by total fatalities or injuries, are: 
+
+2. wind:                12949  
+3. high temperatures:   12421  
+4. flooding:            10234  
+5. lightning:           6048
+
+
+### Economic Health
+
+Flooding is the most economically damaging weather event type with a total of 180B USD in total damage. 
+
+The remaining 4, ordered by most economic damage, are: 
+
+2. hurricanes:          90B USD  
+3. thunderstorms:       64B USD  
+4. tornadoes:           57B USD  
+5. wind:                20B USD  
